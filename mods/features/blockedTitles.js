@@ -3,6 +3,9 @@ const BLOCKED_KEYWORDS = ['roblox'];
 const blockedVideoIds = window.tizentubeBlockedVideoIds || new Set();
 window.tizentubeBlockedVideoIds = blockedVideoIds;
 
+const rawJsonParse = JSON.parse;
+const rawJsonStringify = JSON.stringify;
+
 let lastBlockedNavigationAt = 0;
 let hasShownActiveToast = false;
 let lastFilteredToastAt = 0;
@@ -39,12 +42,16 @@ function getTileVideoId(item) {
   return item?.tileRenderer?.contentId || item?.tileRenderer?.onSelectCommand?.watchEndpoint?.videoId;
 }
 
-function rendererContainsBlockedKeyword(renderer) {
+function safeStringify(value) {
   try {
-    return containsBlockedKeyword(JSON.stringify(renderer));
+    return rawJsonStringify(value);
   } catch (e) {
-    return false;
+    return '';
   }
+}
+
+function rendererContainsBlockedKeyword(renderer) {
+  return containsBlockedKeyword(safeStringify(renderer));
 }
 
 function isBlockedTile(item) {
@@ -92,7 +99,7 @@ function isBlockedVideoLikeRenderer(value) {
 
   let serialized;
   try {
-    serialized = JSON.stringify(payload);
+    serialized = safeStringify(payload);
   } catch (e) {
     return false;
   }
@@ -144,6 +151,128 @@ function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0,
 
   if (depth === 0) showFilteredRendererToast(state.removed);
   return state.removed;
+}
+
+function filterBlockedResponseObject(response) {
+  handlePlaybackResponse(response);
+  return filterBlockedVideoRenderersDeep(response);
+}
+
+function filterBlockedResponseText(text) {
+  if (!containsBlockedKeyword(text)) return null;
+
+  let response;
+  try {
+    response = rawJsonParse(text);
+  } catch (e) {
+    return null;
+  }
+
+  const removed = filterBlockedResponseObject(response);
+  if (removed <= 0) return null;
+
+  try {
+    return rawJsonStringify(response);
+  } catch (e) {
+    return null;
+  }
+}
+
+function isYouTubeApiUrl(url) {
+  return /(^|\/)(youtubei|youtubei\/v1|youtubei\/v1\/(browse|search|next|player))\b/.test(String(url || '')) ||
+    /youtube\.com\/youtubei\/v1\/(browse|search|next|player)/.test(String(url || ''));
+}
+
+function cloneResponseWithText(response, text) {
+  if (!window.Response) return response;
+
+  try {
+    return new Response(text, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers
+    });
+  } catch (e) {
+    return response;
+  }
+}
+
+function patchFetchResponses() {
+  if (!window.fetch || window.tizentubeBlockedTitleFetchPatched) return;
+  window.tizentubeBlockedTitleFetchPatched = true;
+
+  const originalFetch = window.fetch;
+  window.fetch = function () {
+    return originalFetch.apply(this, arguments).then(response => {
+      const url = response?.url || arguments[0]?.url || arguments[0];
+      if (!isYouTubeApiUrl(url)) return response;
+      if (!response?.clone) return response;
+
+      return response.clone().text().then(text => {
+        const filteredText = filterBlockedResponseText(text);
+        return filteredText ? cloneResponseWithText(response, filteredText) : response;
+      }).catch(() => response);
+    });
+  };
+}
+
+function patchXhrResponses() {
+  if (!window.XMLHttpRequest || window.tizentubeBlockedTitleXhrPatched) return;
+  window.tizentubeBlockedTitleXhrPatched = true;
+
+  const originalOpen = XMLHttpRequest.prototype.open;
+  const originalSend = XMLHttpRequest.prototype.send;
+
+  XMLHttpRequest.prototype.open = function (method, url) {
+    this.tizentubeBlockedTitleUrl = url;
+    return originalOpen.apply(this, arguments);
+  };
+
+  function applyFilteredXhrResponse(xhr) {
+    if (xhr.tizentubeBlockedTitleFiltered) return;
+    if (xhr.readyState !== 4) return;
+    if (xhr.responseType && xhr.responseType !== 'text') return;
+
+    xhr.tizentubeBlockedTitleFiltered = true;
+    const filteredText = filterBlockedResponseText(xhr.responseText);
+    if (!filteredText) return;
+
+    try {
+      Object.defineProperty(xhr, 'responseText', { value: filteredText });
+      Object.defineProperty(xhr, 'response', { value: filteredText });
+    } catch (e) { }
+  }
+
+  XMLHttpRequest.prototype.send = function () {
+    if (isYouTubeApiUrl(this.tizentubeBlockedTitleUrl)) {
+      const originalReadyStateChange = this.onreadystatechange;
+      if (typeof originalReadyStateChange === 'function') {
+        this.onreadystatechange = function () {
+          applyFilteredXhrResponse(this);
+          return originalReadyStateChange.apply(this, arguments);
+        };
+      }
+
+      const originalLoad = this.onload;
+      if (typeof originalLoad === 'function') {
+        this.onload = function () {
+          applyFilteredXhrResponse(this);
+          return originalLoad.apply(this, arguments);
+        };
+      }
+
+      this.addEventListener('readystatechange', () => {
+        applyFilteredXhrResponse(this);
+      });
+    }
+
+    return originalSend.apply(this, arguments);
+  };
+}
+
+function patchBlockedTitleNetworkResponses() {
+  patchFetchResponses();
+  patchXhrResponses();
 }
 
 function getWatchMetadata(response) {
@@ -244,10 +373,13 @@ function showBlockedTitleFilterToast() {
 
 export {
   containsBlockedKeyword,
+  filterBlockedResponseObject,
+  filterBlockedResponseText,
   filterBlockedVideoRenderersDeep,
   filterBlockedTiles,
   handlePlaybackResponse,
   isBlockedVideoId,
+  patchBlockedTitleNetworkResponses,
   rememberBlockedVideoId,
   showBlockedTitleFilterToast,
   stopBlockedPlayback,
