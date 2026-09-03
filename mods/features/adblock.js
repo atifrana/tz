@@ -4,6 +4,7 @@ import resolveCommand from '../resolveCommand.js';
 import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/customYTSettings.js';
 import { t } from 'i18next';
+import { filterBlockedTiles, handlePlaybackResponse } from './blockedTitles.js';
 
 /**
  * This is a minimal reimplementation of the following uBlock Origin rule:
@@ -25,6 +26,8 @@ JSON.parse = function () {
       // Handle inline playback without ads
       console.log(r.playbackContext.contentPlaybackContext);
     }
+
+    handlePlaybackResponse(r);
 
     if (r.adPlacements && adBlockEnabled) {
       r.adPlacements = [];
@@ -90,6 +93,8 @@ JSON.parse = function () {
       r?.contents?.tvBrowseRenderer?.content?.tvSurfaceContentRenderer?.content
         ?.gridRenderer?.items
     ) {
+      r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.gridRenderer.items =
+        filterBlockedTiles(r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.gridRenderer.items);
       addLongPress(r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.gridRenderer.items);
     }
 
@@ -127,6 +132,7 @@ JSON.parse = function () {
     }
 
     if (r?.continuationContents?.horizontalListContinuation?.items) {
+      r.continuationContents.horizontalListContinuation.items = filterBlockedTiles(r.continuationContents.horizontalListContinuation.items);
       deArrowify(r.continuationContents.horizontalListContinuation.items);
       hqify(r.continuationContents.horizontalListContinuation.items);
       addLongPress(r.continuationContents.horizontalListContinuation.items);
@@ -134,6 +140,7 @@ JSON.parse = function () {
     }
 
     if (r?.continuationContents?.gridContinuation?.items) {
+      r.continuationContents.gridContinuation.items = filterBlockedTiles(r.continuationContents.gridContinuation.items);
       addLongPress(r.continuationContents.gridContinuation.items);
     }
 
@@ -160,6 +167,7 @@ JSON.parse = function () {
             section.tabs[index].tabRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents = clone;
           }
           if (content?.gridRenderer?.items) {
+            content.gridRenderer.items = filterBlockedTiles(content.gridRenderer.items);
             addLongPress(content.gridRenderer.items);
           }
         }
@@ -313,6 +321,7 @@ function processShelves(shelves, shouldAddPreviews = true) {
       if (configRead('disableEnlargingThumbnails')) shelve.shelfRenderer.tvhtml5Style.effects.enlarge = false;
       if (configRead('enableShrinkingThumbnails')) shelve.shelfRenderer.tvhtml5Style.effects.shrink = true;
       if (!shelve.shelfRenderer.content?.horizontalListRenderer?.items) continue;
+      shelve.shelfRenderer.content.horizontalListRenderer.items = filterBlockedTiles(shelve.shelfRenderer.content.horizontalListRenderer.items);
       deArrowify(shelve.shelfRenderer.content.horizontalListRenderer.items);
       hqify(shelve.shelfRenderer.content.horizontalListRenderer.items);
       addLongPress(shelve.shelfRenderer.content.horizontalListRenderer.items);
@@ -449,7 +458,7 @@ function addLongPress(items) {
 }
 
 function hideVideo(items) {
-  return items.filter(item => {
+  return filterBlockedTiles(items).filter(item => {
     if (!item.tileRenderer) return true;
     const progressBar = item.tileRenderer.header?.tileHeaderRenderer?.thumbnailOverlays?.find(overlay => overlay.thumbnailOverlayResumePlaybackRenderer)?.thumbnailOverlayResumePlaybackRenderer;
     if (!progressBar) return true;

@@ -23,6 +23,8 @@ function showToast(title, subtitle, thumbnails) {
     resolveCommand(toastCmd);
 }
 
+window.tizentubeShowToast = showToast;
+
 function OverlayPanelHeaderRenderer(title, subtitle, thumbnails) {
     return {
         overlayPanelHeaderRenderer: {

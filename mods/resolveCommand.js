@@ -5,6 +5,7 @@ import { speedSettings } from './ui/speedUI.js';
 import { showToast, buttonItem } from './ui/ytUI.js';
 import checkForUpdates from './features/updater.js';
 import { t } from 'i18next';
+import { isBlockedVideoId, stopBlockedPlayback } from './features/blockedTitles.js';
 
 export default function resolveCommand(cmd, _) {
     // resolveCommand function is pretty OP, it can do from opening modals, changing client settings and way more.
@@ -125,9 +126,13 @@ export function patchResolveCommand() {
                         );
                     }
                 } else if (cmd?.watchEndpoint?.videoId) {
+                    if (isBlockedVideoId(cmd.watchEndpoint.videoId)) {
+                        stopBlockedPlayback();
+                        return true;
+                    }
                     window.isPipPlaying = false;
                     const ytlrPlayerContainer = document.querySelector('ytlr-player-container');
-                    ytlrPlayerContainer.style.removeProperty('z-index');
+                    ytlrPlayerContainer?.style?.removeProperty('z-index');
                 }
 
                 if (cmd.customAction) return window._yttv[key].instance.resolveCommand(cmd, _);
@@ -142,6 +147,8 @@ export function patchResolveCommand() {
                             customAction(command.showEngagementPanelEndpoint.customAction.action, command.showEngagementPanelEndpoint.customAction.parameters);
                         } else if (command.playlistEditEndpoint?.customAction) {
                             customAction(command.playlistEditEndpoint.customAction.action, command.playlistEditEndpoint.customAction.parameters);
+                        } else if (command?.watchEndpoint?.videoId && isBlockedVideoId(command.watchEndpoint.videoId)) {
+                            stopBlockedPlayback();
                         } else {
                             window._yttv[key].instance.resolveCommand(command, _);
                         }
