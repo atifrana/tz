@@ -5,6 +5,8 @@ window.tizentubeBlockedVideoIds = blockedVideoIds;
 
 let lastBlockedNavigationAt = 0;
 let hasShownActiveToast = false;
+let lastFilteredToastAt = 0;
+let totalFilteredRendererCount = 0;
 
 function textFromNode(node) {
   if (!node) return '';
@@ -65,7 +67,12 @@ const VIDEO_RENDERER_KEYS = [
   'gridVideoRenderer',
   'searchVideoRenderer',
   'lockupViewModel',
-  'reelItemRenderer'
+  'reelItemRenderer',
+  'richItemRenderer',
+  'playlistVideoRenderer',
+  'playlistPanelVideoRenderer',
+  'compactStationRenderer',
+  'tvhtml5VideoRenderer'
 ];
 
 function getVideoRendererPayload(value) {
@@ -98,24 +105,45 @@ function isBlockedVideoLikeRenderer(value) {
   return true;
 }
 
-function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0 }) {
-  if (!value || typeof value !== 'object' || depth > 30 || state.visited > 5000) return;
+function showFilteredRendererToast(count) {
+  if (count <= 0) return;
+  totalFilteredRendererCount += count;
+
+  const now = Date.now();
+  if (now - lastFilteredToastAt < 1500) return;
+  lastFilteredToastAt = now;
+
+  try {
+    window.tizentubeShowToast?.('TizenTube Roblox Filter', `Filtered ${totalFilteredRendererCount} blocked video${totalFilteredRendererCount === 1 ? '' : 's'}`);
+  } catch (e) { }
+}
+
+function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0, removed: 0 }) {
+  if (!value || typeof value !== 'object' || depth > 40 || state.visited > 50000) {
+    if (depth === 0) showFilteredRendererToast(state.removed);
+    return state.removed;
+  }
   state.visited++;
 
   if (Array.isArray(value)) {
     for (let i = value.length - 1; i >= 0; i--) {
       if (isBlockedVideoLikeRenderer(value[i])) {
         value.splice(i, 1);
+        state.removed++;
       } else {
         filterBlockedVideoRenderersDeep(value[i], depth + 1, state);
       }
     }
-    return;
+    if (depth === 0) showFilteredRendererToast(state.removed);
+    return state.removed;
   }
 
   for (const key in value) {
     filterBlockedVideoRenderersDeep(value[key], depth + 1, state);
   }
+
+  if (depth === 0) showFilteredRendererToast(state.removed);
+  return state.removed;
 }
 
 function getWatchMetadata(response) {
