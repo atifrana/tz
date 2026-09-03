@@ -4,6 +4,8 @@ const blockedVideoIds = window.tizentubeBlockedVideoIds || new Set();
 window.tizentubeBlockedVideoIds = blockedVideoIds;
 
 let lastBlockedNavigationAt = 0;
+let hasShownActiveToast = false;
+let domFilterStarted = false;
 
 function textFromNode(node) {
   if (!node) return '';
@@ -36,9 +38,17 @@ function getTileVideoId(item) {
   return item?.tileRenderer?.contentId || item?.tileRenderer?.onSelectCommand?.watchEndpoint?.videoId;
 }
 
+function rendererContainsBlockedKeyword(renderer) {
+  try {
+    return containsBlockedKeyword(JSON.stringify(renderer));
+  } catch (e) {
+    return false;
+  }
+}
+
 function isBlockedTile(item) {
   const title = getTileTitle(item);
-  if (!containsBlockedKeyword(title)) return false;
+  if (!containsBlockedKeyword(title) && !rendererContainsBlockedKeyword(item?.tileRenderer)) return false;
 
   rememberBlockedVideoId(getTileVideoId(item));
   return true;
@@ -134,12 +144,66 @@ function handlePlaybackResponse(response) {
   return true;
 }
 
+function hideBlockedDomTiles() {
+  const candidates = document.querySelectorAll([
+    'ytlr-tile-renderer',
+    'ytlr-compact-video-renderer',
+    'ytlr-grid-video-renderer',
+    'ytlr-lockup-view-model',
+    '[is="ytlr-tile-renderer"]'
+  ].join(','));
+
+  for (const element of candidates) {
+    if (!containsBlockedKeyword(element.textContent)) continue;
+    element.style.setProperty('display', 'none', 'important');
+    element.style.setProperty('visibility', 'hidden', 'important');
+  }
+}
+
+function startBlockedTitleDomFilter() {
+  if (domFilterStarted) return;
+  domFilterStarted = true;
+
+  setTimeout(() => {
+    try {
+      if (!hasShownActiveToast) {
+        hasShownActiveToast = true;
+        window.tizentubeShowToast?.('TizenTube Roblox Filter', 'Blocked-title filter active');
+      }
+    } catch (e) { }
+  }, 2500);
+
+  const runFilter = () => {
+    try {
+      hideBlockedDomTiles();
+    } catch (e) {
+      console.warn('Blocked title DOM filter failed:', e);
+    }
+  };
+
+  setInterval(runFilter, 1000);
+
+  const startObserver = () => {
+    if (!document.body) return setTimeout(startObserver, 250);
+
+    const observer = new MutationObserver(runFilter);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    runFilter();
+  };
+
+  startObserver();
+}
+
 export {
   containsBlockedKeyword,
   filterBlockedTiles,
   handlePlaybackResponse,
   isBlockedVideoId,
   rememberBlockedVideoId,
+  startBlockedTitleDomFilter,
   stopBlockedPlayback,
   textFromNode
 };

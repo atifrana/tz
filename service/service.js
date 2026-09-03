@@ -32,7 +32,7 @@ const apps = {
                     [
                         new tizen.ApplicationControlData("module", [JSON.stringify(
                             {
-                                moduleName: 'atifrana/tz@roblox-filter-1',
+                                moduleName: 'atifrana/tz@r2',
                                 moduleType: 'gh',
                                 args: launchData
                             }

@@ -50399,7 +50399,7 @@ var apps = {
     launch: function launch(launchData) {
       var tbPackageId = tizen.application.getAppInfo().packageId;
       tizen.application.launchAppControl(new tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", null, null, null, [new tizen.ApplicationControlData("module", [JSON.stringify({
-        moduleName: 'atifrana/tz@roblox-filter-1',
+        moduleName: 'atifrana/tz@r2',
         moduleType: 'gh',
         args: launchData
       })])]), "".concat(tbPackageId, ".").concat(commonjsGlobal.isTizenTube ? 'TizenTubeStandalone' : 'TizenBrewStandalone'));
