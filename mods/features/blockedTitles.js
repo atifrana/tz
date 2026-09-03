@@ -5,8 +5,6 @@ window.tizentubeBlockedVideoIds = blockedVideoIds;
 
 let lastBlockedNavigationAt = 0;
 let hasShownActiveToast = false;
-let domFilterStarted = false;
-let hiddenDomTileCount = 0;
 
 function textFromNode(node) {
   if (!node) return '';
@@ -58,6 +56,66 @@ function isBlockedTile(item) {
 function filterBlockedTiles(items) {
   if (!Array.isArray(items)) return items;
   return items.filter(item => !isBlockedTile(item));
+}
+
+const VIDEO_RENDERER_KEYS = [
+  'tileRenderer',
+  'videoRenderer',
+  'compactVideoRenderer',
+  'gridVideoRenderer',
+  'searchVideoRenderer',
+  'lockupViewModel',
+  'reelItemRenderer'
+];
+
+function getVideoRendererPayload(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  for (const key of VIDEO_RENDERER_KEYS) {
+    if (value[key]) return value[key];
+  }
+
+  return null;
+}
+
+function isBlockedVideoLikeRenderer(value) {
+  if (!value || typeof value !== 'object') return false;
+  const payload = getVideoRendererPayload(value);
+  if (!payload) return false;
+
+  let serialized;
+  try {
+    serialized = JSON.stringify(payload);
+  } catch (e) {
+    return false;
+  }
+
+  if (!containsBlockedKeyword(serialized)) return false;
+  if (!/"(watchEndpoint|videoId|contentId|reelWatchEndpoint)"/.test(serialized)) return false;
+
+  const videoIdMatch = serialized.match(/"videoId"\s*:\s*"([^"]+)"/) || serialized.match(/"contentId"\s*:\s*"([^"]+)"/);
+  rememberBlockedVideoId(videoIdMatch?.[1]);
+  return true;
+}
+
+function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0 }) {
+  if (!value || typeof value !== 'object' || depth > 30 || state.visited > 5000) return;
+  state.visited++;
+
+  if (Array.isArray(value)) {
+    for (let i = value.length - 1; i >= 0; i--) {
+      if (isBlockedVideoLikeRenderer(value[i])) {
+        value.splice(i, 1);
+      } else {
+        filterBlockedVideoRenderersDeep(value[i], depth + 1, state);
+      }
+    }
+    return;
+  }
+
+  for (const key in value) {
+    filterBlockedVideoRenderersDeep(value[key], depth + 1, state);
+  }
 }
 
 function getWatchMetadata(response) {
@@ -145,110 +203,7 @@ function handlePlaybackResponse(response) {
   return true;
 }
 
-function hideElement(element) {
-  element.setAttribute('data-tizentube-blocked-title', 'true');
-  element.style.setProperty('display', 'none', 'important');
-  element.style.setProperty('visibility', 'hidden', 'important');
-}
-
-function looksLikeVideoResult(element) {
-  const text = element?.textContent || '';
-  const rect = element?.getBoundingClientRect?.();
-  if (!rect || rect.width < 100 || rect.height < 60) return false;
-  if (!containsBlockedKeyword(text)) return false;
-  return /views?|ago|\d+:\d+|watch/i.test(text);
-}
-
-function findBlockedDomTileFromTextNode(textNode) {
-  let element = textNode.parentElement;
-  for (let depth = 0; element && depth < 12; depth++) {
-    if (looksLikeVideoResult(element)) return element;
-    element = element.parentElement;
-  }
-  return null;
-}
-
-function hideBlockedRendererElements() {
-  let count = 0;
-  const candidates = document.querySelectorAll([
-    'ytlr-tile-renderer',
-    'ytlr-video-renderer',
-    'ytlr-compact-video-renderer',
-    'ytlr-grid-video-renderer',
-    'ytlr-search-video-renderer',
-    'ytlr-lockup-view-model',
-    '[is="ytlr-tile-renderer"]',
-    '[role="link"]',
-    '[role="button"]',
-    '[tabindex]',
-    '[hybridnavfocusable]'
-  ].join(','));
-
-  for (const element of candidates) {
-    if (element.getAttribute('data-tizentube-blocked-title') === 'true') continue;
-    if (!looksLikeVideoResult(element)) continue;
-    hideElement(element);
-    count++;
-  }
-
-  return count;
-}
-
-function hideBlockedTextNodeElements() {
-  if (!document.body) return 0;
-
-  let count = 0;
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      if (!containsBlockedKeyword(node.nodeValue)) return NodeFilter.FILTER_REJECT;
-      const parent = node.parentElement;
-      if (!parent) return NodeFilter.FILTER_REJECT;
-      if (parent.closest('input, textarea')) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
-    }
-  });
-
-  const matches = [];
-  while (walker.nextNode()) {
-    matches.push(walker.currentNode);
-  }
-
-  for (const node of matches) {
-    const element = findBlockedDomTileFromTextNode(node);
-    if (!element) continue;
-    if (element.getAttribute('data-tizentube-blocked-title') === 'true') continue;
-    hideElement(element);
-    count++;
-  }
-
-  return count;
-}
-
-function hideBlockedDomTiles() {
-  const count = hideBlockedRendererElements() + hideBlockedTextNodeElements();
-
-  if (count > 0) {
-    hiddenDomTileCount += count;
-    try {
-      window.tizentubeShowToast?.('TizenTube Roblox Filter', `Hidden ${hiddenDomTileCount} blocked video${hiddenDomTileCount === 1 ? '' : 's'}`);
-    } catch (e) { }
-  }
-}
-
-function stopBlockedDomClicks() {
-  document.addEventListener('click', event => {
-    const element = event.target?.closest?.('[data-tizentube-blocked-title="true"]');
-    if (!element) return;
-    if (!containsBlockedKeyword(element.textContent)) return;
-    event.preventDefault();
-    event.stopPropagation();
-  }, true);
-}
-
-function startBlockedTitleDomFilter() {
-  if (domFilterStarted) return;
-  domFilterStarted = true;
-
+function showBlockedTitleFilterToast() {
   setTimeout(() => {
     try {
       if (!hasShownActiveToast) {
@@ -257,39 +212,16 @@ function startBlockedTitleDomFilter() {
       }
     } catch (e) { }
   }, 2500);
-
-  const runFilter = () => {
-    try {
-      hideBlockedDomTiles();
-    } catch (e) {
-      console.warn('Blocked title DOM filter failed:', e);
-    }
-  };
-
-  setInterval(runFilter, 1000);
-  stopBlockedDomClicks();
-
-  const startObserver = () => {
-    if (!document.body) return setTimeout(startObserver, 250);
-
-    const observer = new MutationObserver(runFilter);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    runFilter();
-  };
-
-  startObserver();
 }
 
 export {
   containsBlockedKeyword,
+  filterBlockedVideoRenderersDeep,
   filterBlockedTiles,
   handlePlaybackResponse,
   isBlockedVideoId,
   rememberBlockedVideoId,
-  startBlockedTitleDomFilter,
+  showBlockedTitleFilterToast,
   stopBlockedPlayback,
   textFromNode
 };

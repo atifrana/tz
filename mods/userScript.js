@@ -9,7 +9,7 @@ import "core-js/proposals/object-getownpropertydescriptors";
 import './translations/index.js'
 import "./domrect-polyfill";
 import "./features/adblock.js";
-import { startBlockedTitleDomFilter } from "./features/blockedTitles.js";
+import { showBlockedTitleFilterToast } from "./features/blockedTitles.js";
 import "./features/sponsorblock.js";
 import "./ui/ui.js";
 import "./ui/speedUI.js";
@@ -27,4 +27,4 @@ import "./ui/customGuideAction.js";
 import "./features/autoFrameRate.js";
 import "./ui/clock.js";
 
-startBlockedTitleDomFilter();
+showBlockedTitleFilterToast();

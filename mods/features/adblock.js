@@ -4,7 +4,7 @@ import resolveCommand from '../resolveCommand.js';
 import { timelyAction, longPressData, MenuServiceItemRenderer, ShelfRenderer, TileRenderer, ButtonRenderer } from '../ui/ytUI.js';
 import { PatchSettings } from '../ui/customYTSettings.js';
 import { t } from 'i18next';
-import { filterBlockedTiles, handlePlaybackResponse } from './blockedTitles.js';
+import { filterBlockedTiles, filterBlockedVideoRenderersDeep, handlePlaybackResponse } from './blockedTitles.js';
 
 /**
  * This is a minimal reimplementation of the following uBlock Origin rule:
@@ -28,6 +28,7 @@ JSON.parse = function () {
     }
 
     handlePlaybackResponse(r);
+    filterBlockedVideoRenderersDeep(r);
 
     if (r.adPlacements && adBlockEnabled) {
       r.adPlacements = [];
