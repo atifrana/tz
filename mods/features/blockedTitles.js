@@ -6,6 +6,7 @@ window.tizentubeBlockedVideoIds = blockedVideoIds;
 let lastBlockedNavigationAt = 0;
 let hasShownActiveToast = false;
 let domFilterStarted = false;
+let hiddenDomTileCount = 0;
 
 function textFromNode(node) {
   if (!node) return '';
@@ -144,20 +145,104 @@ function handlePlaybackResponse(response) {
   return true;
 }
 
-function hideBlockedDomTiles() {
+function hideElement(element) {
+  element.setAttribute('data-tizentube-blocked-title', 'true');
+  element.style.setProperty('display', 'none', 'important');
+  element.style.setProperty('visibility', 'hidden', 'important');
+}
+
+function looksLikeVideoResult(element) {
+  const text = element?.textContent || '';
+  const rect = element?.getBoundingClientRect?.();
+  if (!rect || rect.width < 100 || rect.height < 60) return false;
+  if (!containsBlockedKeyword(text)) return false;
+  return /views?|ago|\d+:\d+|watch/i.test(text);
+}
+
+function findBlockedDomTileFromTextNode(textNode) {
+  let element = textNode.parentElement;
+  for (let depth = 0; element && depth < 12; depth++) {
+    if (looksLikeVideoResult(element)) return element;
+    element = element.parentElement;
+  }
+  return null;
+}
+
+function hideBlockedRendererElements() {
+  let count = 0;
   const candidates = document.querySelectorAll([
     'ytlr-tile-renderer',
+    'ytlr-video-renderer',
     'ytlr-compact-video-renderer',
     'ytlr-grid-video-renderer',
+    'ytlr-search-video-renderer',
     'ytlr-lockup-view-model',
-    '[is="ytlr-tile-renderer"]'
+    '[is="ytlr-tile-renderer"]',
+    '[role="link"]',
+    '[role="button"]',
+    '[tabindex]',
+    '[hybridnavfocusable]'
   ].join(','));
 
   for (const element of candidates) {
-    if (!containsBlockedKeyword(element.textContent)) continue;
-    element.style.setProperty('display', 'none', 'important');
-    element.style.setProperty('visibility', 'hidden', 'important');
+    if (element.getAttribute('data-tizentube-blocked-title') === 'true') continue;
+    if (!looksLikeVideoResult(element)) continue;
+    hideElement(element);
+    count++;
   }
+
+  return count;
+}
+
+function hideBlockedTextNodeElements() {
+  if (!document.body) return 0;
+
+  let count = 0;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!containsBlockedKeyword(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('input, textarea')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const matches = [];
+  while (walker.nextNode()) {
+    matches.push(walker.currentNode);
+  }
+
+  for (const node of matches) {
+    const element = findBlockedDomTileFromTextNode(node);
+    if (!element) continue;
+    if (element.getAttribute('data-tizentube-blocked-title') === 'true') continue;
+    hideElement(element);
+    count++;
+  }
+
+  return count;
+}
+
+function hideBlockedDomTiles() {
+  const count = hideBlockedRendererElements() + hideBlockedTextNodeElements();
+
+  if (count > 0) {
+    hiddenDomTileCount += count;
+    try {
+      window.tizentubeShowToast?.('TizenTube Roblox Filter', `Hidden ${hiddenDomTileCount} blocked video${hiddenDomTileCount === 1 ? '' : 's'}`);
+    } catch (e) { }
+  }
+}
+
+function stopBlockedDomClicks() {
+  document.addEventListener('click', event => {
+    const element = event.target?.closest?.('[data-tizentube-blocked-title="true"]');
+    if (!element) return;
+    if (!containsBlockedKeyword(element.textContent)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
 }
 
 function startBlockedTitleDomFilter() {
@@ -182,6 +267,7 @@ function startBlockedTitleDomFilter() {
   };
 
   setInterval(runFilter, 1000);
+  stopBlockedDomClicks();
 
   const startObserver = () => {
     if (!document.body) return setTimeout(startObserver, 250);

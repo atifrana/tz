@@ -32,7 +32,7 @@ const apps = {
                     [
                         new tizen.ApplicationControlData("module", [JSON.stringify(
                             {
-                                moduleName: 'atifrana/tz@r2',
+                                moduleName: 'atifrana/tz@r3',
                                 moduleType: 'gh',
                                 args: launchData
                             }
