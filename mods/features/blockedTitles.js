@@ -152,6 +152,24 @@ function isBlockedVideoLikeRenderer(value) {
   return true;
 }
 
+function isRendererListKey(key) {
+  return key === 'items' || key === 'contents';
+}
+
+function getListItemsFromRendererContainer(value) {
+  if (!value || typeof value !== 'object') return null;
+  return value.shelfRenderer?.content?.horizontalListRenderer?.items ||
+    value.richShelfRenderer?.contents ||
+    value.gridRenderer?.items ||
+    value.sectionListRenderer?.contents ||
+    null;
+}
+
+function isEmptyRendererContainer(value) {
+  const items = getListItemsFromRendererContainer(value);
+  return Array.isArray(items) && items.length === 0;
+}
+
 function showFilteredRendererToast(count) {
   if (count <= 0) return;
   totalFilteredRendererCount += count;
@@ -165,7 +183,7 @@ function showFilteredRendererToast(count) {
   } catch (e) { }
 }
 
-function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0, removed: 0 }) {
+function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0, removed: 0 }, parentKey = '') {
   if (!value || typeof value !== 'object' || depth > 40 || state.visited > 50000) {
     if (depth === 0) showFilteredRendererToast(state.removed);
     return state.removed;
@@ -173,12 +191,17 @@ function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0,
   state.visited++;
 
   if (Array.isArray(value)) {
+    const canRemoveFromThisArray = isRendererListKey(parentKey);
+
     for (let i = value.length - 1; i >= 0; i--) {
-      if (isBlockedVideoLikeRenderer(value[i])) {
+      if (canRemoveFromThisArray && isBlockedVideoLikeRenderer(value[i])) {
         value.splice(i, 1);
         state.removed++;
       } else {
-        filterBlockedVideoRenderersDeep(value[i], depth + 1, state);
+        filterBlockedVideoRenderersDeep(value[i], depth + 1, state, '');
+        if (canRemoveFromThisArray && isEmptyRendererContainer(value[i])) {
+          value.splice(i, 1);
+        }
       }
     }
     if (depth === 0) showFilteredRendererToast(state.removed);
@@ -186,7 +209,7 @@ function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0,
   }
 
   for (const key in value) {
-    filterBlockedVideoRenderersDeep(value[key], depth + 1, state);
+    filterBlockedVideoRenderersDeep(value[key], depth + 1, state, key);
   }
 
   if (depth === 0) showFilteredRendererToast(state.removed);
