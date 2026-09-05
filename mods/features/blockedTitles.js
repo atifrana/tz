@@ -15,6 +15,7 @@ function textFromNode(node) {
   if (!node) return '';
   if (typeof node === 'string') return node;
   if (node.simpleText) return String(node.simpleText);
+  if (node.content) return String(node.content);
   if (Array.isArray(node.runs)) {
     return node.runs.map(run => run?.text || '').join('');
   }
@@ -72,7 +73,7 @@ function safeStringify(value) {
 }
 
 function rendererContainsBlockedKeyword(renderer) {
-  return containsBlockedKeyword(safeStringify(renderer));
+  return getRendererTitleCandidates(renderer).some(containsBlockedKeyword);
 }
 
 function isBlockedTile(item) {
@@ -96,7 +97,6 @@ const VIDEO_RENDERER_KEYS = [
   'searchVideoRenderer',
   'lockupViewModel',
   'reelItemRenderer',
-  'richItemRenderer',
   'playlistVideoRenderer',
   'playlistPanelVideoRenderer',
   'compactStationRenderer',
@@ -106,6 +106,10 @@ const VIDEO_RENDERER_KEYS = [
 function getVideoRendererPayload(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 
+  if (value.richItemRenderer?.content) {
+    return getVideoRendererPayload(value.richItemRenderer.content);
+  }
+
   for (const key of VIDEO_RENDERER_KEYS) {
     if (value[key]) return value[key];
   }
@@ -113,21 +117,36 @@ function getVideoRendererPayload(value) {
   return null;
 }
 
+function hasVideoEndpoint(value) {
+  if (!value || typeof value !== 'object') return false;
+  const serialized = safeStringify(value);
+  return /"(watchEndpoint|videoId|contentId|reelWatchEndpoint)"/.test(serialized);
+}
+
+function getRendererTitleCandidates(renderer) {
+  if (!renderer || typeof renderer !== 'object') return [];
+
+  const candidates = [
+    renderer.title,
+    renderer.headline,
+    renderer.metadata?.tileMetadataRenderer?.title,
+    renderer.metadata?.lockupMetadataViewModel?.title,
+    renderer.content?.videoRenderer?.title,
+    renderer.content?.tileRenderer?.metadata?.tileMetadataRenderer?.title,
+    renderer.content?.lockupViewModel?.metadata?.lockupMetadataViewModel?.title
+  ].map(textFromNode).filter(Boolean);
+  return candidates;
+}
+
 function isBlockedVideoLikeRenderer(value) {
   if (!value || typeof value !== 'object') return false;
   const payload = getVideoRendererPayload(value);
   if (!payload) return false;
 
-  let serialized;
-  try {
-    serialized = safeStringify(payload);
-  } catch (e) {
-    return false;
-  }
+  if (!hasVideoEndpoint(payload)) return false;
+  if (!getRendererTitleCandidates(payload).some(containsBlockedKeyword)) return false;
 
-  if (!containsBlockedKeyword(serialized)) return false;
-  if (!/"(watchEndpoint|videoId|contentId|reelWatchEndpoint)"/.test(serialized)) return false;
-
+  const serialized = safeStringify(payload);
   const videoIdMatch = serialized.match(/"videoId"\s*:\s*"([^"]+)"/) || serialized.match(/"contentId"\s*:\s*"([^"]+)"/);
   rememberBlockedVideoId(videoIdMatch?.[1]);
   return true;
