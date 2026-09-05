@@ -170,6 +170,41 @@ function isEmptyRendererContainer(value) {
   return Array.isArray(items) && items.length === 0;
 }
 
+function isSearchResponseUrl(url) {
+  return /(^|\/)youtubei\/v1\/search\b/.test(String(url || '')) ||
+    /youtube\.com\/youtubei\/v1\/search\b/.test(String(url || ''));
+}
+
+function isCurrentSearchPage() {
+  try {
+    return String(location.hash || '').indexOf('/search') !== -1;
+  } catch (e) {
+    return false;
+  }
+}
+
+function isSearchCleanupContext(options = {}) {
+  return Boolean(options.cleanupSearchResults || isCurrentSearchPage());
+}
+
+function containsPeopleAlsoSearchText(value) {
+  return safeStringify(value).toLowerCase().indexOf('people also search for') !== -1;
+}
+
+function isShortsLikeRenderer(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (value.reelShelfRenderer || value.reelItemRenderer || value.shortsLockupViewModel) return true;
+
+  const serialized = safeStringify(value);
+  return serialized.indexOf('TVHTML5_SHELF_RENDERER_TYPE_SHORTS') !== -1 ||
+    serialized.indexOf('TVHTML5_TILE_RENDERER_TYPE_SHORTS') !== -1 ||
+    serialized.indexOf('"reelWatchEndpoint"') !== -1;
+}
+
+function isSearchNoiseRenderer(value) {
+  return containsPeopleAlsoSearchText(value) || isShortsLikeRenderer(value);
+}
+
 function showFilteredRendererToast(count) {
   if (count <= 0) return;
   totalFilteredRendererCount += count;
@@ -183,46 +218,52 @@ function showFilteredRendererToast(count) {
   } catch (e) { }
 }
 
-function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0, removed: 0 }, parentKey = '') {
+function filterBlockedVideoRenderersDeep(value, depth = 0, state = { visited: 0, removed: 0, cleaned: 0 }, parentKey = '', options = {}) {
   if (!value || typeof value !== 'object' || depth > 40 || state.visited > 50000) {
     if (depth === 0) showFilteredRendererToast(state.removed);
-    return state.removed;
+    return state.removed + state.cleaned;
   }
   state.visited++;
 
   if (Array.isArray(value)) {
     const canRemoveFromThisArray = isRendererListKey(parentKey);
+    const cleanupSearchResults = isSearchCleanupContext(options);
 
     for (let i = value.length - 1; i >= 0; i--) {
       if (canRemoveFromThisArray && isBlockedVideoLikeRenderer(value[i])) {
         value.splice(i, 1);
         state.removed++;
+      } else if (canRemoveFromThisArray && cleanupSearchResults && isSearchNoiseRenderer(value[i])) {
+        value.splice(i, 1);
+        state.cleaned++;
       } else {
-        filterBlockedVideoRenderersDeep(value[i], depth + 1, state, '');
+        filterBlockedVideoRenderersDeep(value[i], depth + 1, state, '', options);
         if (canRemoveFromThisArray && isEmptyRendererContainer(value[i])) {
           value.splice(i, 1);
+          state.cleaned++;
         }
       }
     }
     if (depth === 0) showFilteredRendererToast(state.removed);
-    return state.removed;
+    return state.removed + state.cleaned;
   }
 
   for (const key in value) {
-    filterBlockedVideoRenderersDeep(value[key], depth + 1, state, key);
+    filterBlockedVideoRenderersDeep(value[key], depth + 1, state, key, options);
   }
 
   if (depth === 0) showFilteredRendererToast(state.removed);
-  return state.removed;
+  return state.removed + state.cleaned;
 }
 
-function filterBlockedResponseObject(response) {
+function filterBlockedResponseObject(response, options = {}) {
   handlePlaybackResponse(response);
-  return filterBlockedVideoRenderersDeep(response);
+  return filterBlockedVideoRenderersDeep(response, 0, { visited: 0, removed: 0, cleaned: 0 }, '', options);
 }
 
-function filterBlockedResponseText(text) {
-  if (!containsBlockedKeyword(text)) return null;
+function filterBlockedResponseText(text, options = {}) {
+  const cleanupSearchResults = isSearchCleanupContext(options);
+  if (!cleanupSearchResults && !containsBlockedKeyword(text)) return null;
 
   let response;
   try {
@@ -231,8 +272,8 @@ function filterBlockedResponseText(text) {
     return null;
   }
 
-  const removed = filterBlockedResponseObject(response);
-  if (removed <= 0) return null;
+  const changed = filterBlockedResponseObject(response, { cleanupSearchResults });
+  if (changed <= 0) return null;
 
   try {
     return rawJsonStringify(response);
@@ -272,7 +313,9 @@ function patchFetchResponses() {
       if (!response?.clone) return response;
 
       return response.clone().text().then(text => {
-        const filteredText = filterBlockedResponseText(text);
+        const filteredText = filterBlockedResponseText(text, {
+          cleanupSearchResults: isSearchResponseUrl(url) || isCurrentSearchPage()
+        });
         return filteredText ? cloneResponseWithText(response, filteredText) : response;
       }).catch(() => response);
     });
@@ -297,7 +340,9 @@ function patchXhrResponses() {
     if (xhr.responseType && xhr.responseType !== 'text') return;
 
     xhr.tizentubeBlockedTitleFiltered = true;
-    const filteredText = filterBlockedResponseText(xhr.responseText);
+    const filteredText = filterBlockedResponseText(xhr.responseText, {
+      cleanupSearchResults: isSearchResponseUrl(xhr.tizentubeBlockedTitleUrl) || isCurrentSearchPage()
+    });
     if (!filteredText) return;
 
     try {
