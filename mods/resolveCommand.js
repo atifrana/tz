@@ -5,7 +5,7 @@ import { speedSettings } from './ui/speedUI.js';
 import { showToast, buttonItem } from './ui/ytUI.js';
 import checkForUpdates from './features/updater.js';
 import { t } from 'i18next';
-import { isBlockedVideoId, stopBlockedPlayback } from './features/blockedTitles.js';
+import { getBlockedTitleKeywords, isBlockedVideoId, normalizeBlockedTitleKeywords, stopBlockedPlayback } from './features/blockedTitles.js';
 
 export default function resolveCommand(cmd, _) {
     // resolveCommand function is pretty OP, it can do from opening modals, changing client settings and way more.
@@ -175,6 +175,18 @@ export function patchResolveCommand() {
 }
 
 function customAction(action, parameters) {
+    const showBlockedKeywordSettings = (selectedIndex = 0) => {
+        optionShow({
+            keywordEditor: true,
+            selectedIndex,
+            menuId: 'tt-blocked-title-keywords',
+            menuHeader: {
+                title: 'Blocked title keywords',
+                subtitle: 'Videos with matching titles are hidden and blocked.'
+            }
+        }, true);
+    };
+
     switch (action) {
         case 'SETTINGS_UPDATE':
             modernUI(true, parameters);
@@ -227,6 +239,38 @@ function customAction(action, parameters) {
             break;
         case 'CHECK_FOR_UPDATES':
             checkForUpdates(true);
+            break;
+        case 'BLOCKED_TITLE_KEYWORD_ADD': {
+            const value = window.prompt ? window.prompt('Keyword to block', '') : '';
+            const keyword = normalizeBlockedTitleKeywords([value])[0];
+            if (!keyword) {
+                showToast('TizenTube Roblox Filter', 'No keyword added');
+                showBlockedKeywordSettings(parameters?.selectedIndex || 0);
+                break;
+            }
+
+            const keywords = getBlockedTitleKeywords();
+            if (!keywords.includes(keyword)) {
+                configWrite('blockedTitleKeywords', keywords.concat(keyword));
+                showToast('TizenTube Roblox Filter', `Added keyword: ${keyword}`);
+            } else {
+                showToast('TizenTube Roblox Filter', `Keyword already exists: ${keyword}`);
+            }
+            showBlockedKeywordSettings(0);
+            break;
+        }
+        case 'BLOCKED_TITLE_KEYWORD_REMOVE': {
+            const keyword = String(parameters?.keyword || '').trim().toLowerCase();
+            const keywords = getBlockedTitleKeywords().filter(item => item !== keyword);
+            configWrite('blockedTitleKeywords', keywords);
+            showToast('TizenTube Roblox Filter', `Removed keyword: ${keyword}`);
+            showBlockedKeywordSettings(Math.max(0, (parameters?.selectedIndex || 1) - 1));
+            break;
+        }
+        case 'BLOCKED_TITLE_KEYWORD_RESET':
+            configWrite('blockedTitleKeywords', ['roblox']);
+            showToast('TizenTube Roblox Filter', 'Reset keywords to roblox');
+            showBlockedKeywordSettings(0);
             break;
     }
 }

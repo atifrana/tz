@@ -92,6 +92,18 @@ export default function modernUI(update, parameters) {
             value: 'enableAdBlock'
         },
         {
+            name: 'Blocked title keywords',
+            icon: 'VISIBILITY_OFF',
+            value: null,
+            menuId: 'tt-blocked-title-keywords',
+            keywordEditor: true,
+            menuHeader: {
+                title: 'Blocked title keywords',
+                subtitle: 'Videos with matching titles are hidden and blocked.'
+            },
+            options: []
+        },
+        {
             name: t('settings.options.sponsorblock.title'),
             icon: 'MONEY_HAND',
             value: null,
@@ -883,6 +895,7 @@ export default function modernUI(update, parameters) {
                                     update: setting.options?.title ? 'customUI' : false,
                                     menuId: setting.menuId,
                                     arrayToEdit: setting.arrayToEdit,
+                                    keywordEditor: setting.keywordEditor,
                                     menuHeader: setting.menuHeader
                                 }
                             }
@@ -919,6 +932,67 @@ export function optionShow(parameters, update) {
         return;
     }
     const buttons = [];
+
+    if (parameters.keywordEditor) {
+        const keywords = configRead('blockedTitleKeywords');
+        buttons.push(
+            buttonItem(
+                { title: 'Add keyword', subtitle: keywords.length ? keywords.join(', ') : 'No keywords configured' },
+                { icon: 'ADD' },
+                [
+                    {
+                        customAction: {
+                            action: 'BLOCKED_TITLE_KEYWORD_ADD',
+                            parameters: {
+                                selectedIndex: 0
+                            }
+                        }
+                    }
+                ]
+            )
+        );
+
+        for (let i = 0; i < keywords.length; i++) {
+            const keyword = keywords[i];
+            buttons.push(
+                buttonItem(
+                    { title: keyword, subtitle: 'Remove keyword' },
+                    { icon: 'DELETE' },
+                    [
+                        {
+                            customAction: {
+                                action: 'BLOCKED_TITLE_KEYWORD_REMOVE',
+                                parameters: {
+                                    keyword,
+                                    selectedIndex: i + 1
+                                }
+                            }
+                        }
+                    ]
+                )
+            );
+        }
+
+        buttons.push(
+            buttonItem(
+                { title: 'Reset to default', subtitle: 'Use roblox only' },
+                { icon: 'REPLAY' },
+                [
+                    {
+                        customAction: {
+                            action: 'BLOCKED_TITLE_KEYWORD_RESET',
+                            parameters: {
+                                selectedIndex: keywords.length + 1
+                            }
+                        }
+                    }
+                ]
+            )
+        );
+
+        showModal(parameters.menuHeader || 'Blocked title keywords', overlayPanelItemListRenderer(buttons, parameters.selectedIndex || 0), parameters.menuId || 'tt-blocked-title-keywords', update);
+        return;
+    }
 
     // Check if this is the legacy sponsorBlockManualSkips (array-based) or new boolean-based options
     const isArrayBasedOptions = parameters.arrayToEdit !== undefined;
@@ -993,6 +1067,7 @@ export function optionShow(parameters, update) {
                                     update: option.options?.title ? 'customUI' : false,
                                     menuId: option.menuId,
                                     arrayToEdit: option.arrayToEdit,
+                                    keywordEditor: option.keywordEditor,
                                     menuHeader: option.menuHeader
                                 }
                             }

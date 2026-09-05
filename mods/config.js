@@ -65,6 +65,7 @@ const defaultConfig = {
   clockShowSeconds: false,
   disableEnlargingThumbnails: false,
   enableShrinkingThumbnails: false,
+  blockedTitleKeywords: ['roblox'],
 };
 
 let localConfig;

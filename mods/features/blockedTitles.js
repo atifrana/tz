@@ -1,4 +1,4 @@
-const BLOCKED_KEYWORDS = ['roblox'];
+import { configRead } from '../config.js';
 
 const blockedVideoIds = window.tizentubeBlockedVideoIds || new Set();
 window.tizentubeBlockedVideoIds = blockedVideoIds;
@@ -23,7 +23,28 @@ function textFromNode(node) {
 
 function containsBlockedKeyword(text) {
   const normalized = String(text || '').toLowerCase();
-  return BLOCKED_KEYWORDS.some(keyword => normalized.includes(keyword.toLowerCase()));
+  return getBlockedTitleKeywords().some(keyword => normalized.includes(keyword));
+}
+
+function normalizeBlockedTitleKeywords(value) {
+  const source = Array.isArray(value) ? value : String(value || '').split(',');
+  const normalized = [];
+
+  for (const keyword of source) {
+    const text = String(keyword || '').trim().toLowerCase();
+    if (!text || normalized.includes(text)) continue;
+    normalized.push(text);
+  }
+
+  return normalized;
+}
+
+function getBlockedTitleKeywords() {
+  try {
+    return normalizeBlockedTitleKeywords(configRead('blockedTitleKeywords'));
+  } catch (e) {
+    return ['roblox'];
+  }
 }
 
 function rememberBlockedVideoId(videoId) {
@@ -377,8 +398,10 @@ export {
   filterBlockedResponseText,
   filterBlockedVideoRenderersDeep,
   filterBlockedTiles,
+  getBlockedTitleKeywords,
   handlePlaybackResponse,
   isBlockedVideoId,
+  normalizeBlockedTitleKeywords,
   patchBlockedTitleNetworkResponses,
   rememberBlockedVideoId,
   showBlockedTitleFilterToast,

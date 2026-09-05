@@ -8516,7 +8516,7 @@ var gate$1 = {};
 gate$1.create = create;
 var util$3 = require$$0$4;
 var assert = require$$1$5;
-var noop$1 = function noop() {};
+var noop = function noop() {};
 function create(options) {
   return new Gate(options);
 }
@@ -8544,7 +8544,7 @@ Gate.prototype.val = function val(value) {
 };
 Gate.prototype["await"] = function (callback) {
   this._async["await"](callback);
-  this._async["await"] = noop$1;
+  this._async["await"] = noop;
 };
 function Val(value) {
   this.value = value;
@@ -8574,7 +8574,7 @@ Async.prototype["await"] = function (callback) {
 Async.prototype.makeCallback = function makeCallback(caller, name, mapping) {
   var type = _typeof(mapping);
   assert(type !== 'undefined' || type !== 'number' || type !== 'object', 'An argument `mapping` must be a number or an object, if specified.');
-  if (this.count === 0) return noop$1;
+  if (this.count === 0) return noop;
   if (this.count > 0) this.count--;
   this.pending++;
   var index = this.index++;
@@ -8592,7 +8592,7 @@ Async.prototype.makeCallback = function makeCallback(caller, name, mapping) {
         if (self.failFast) {
           self.canceled = true;
           if (next) {
-            self.next = noop$1;
+            self.next = noop;
             next(error, null);
           } else {
             self.error = error;
@@ -8607,7 +8607,7 @@ Async.prototype.makeCallback = function makeCallback(caller, name, mapping) {
         self.results[name] = result;
       }
       if (self.pending === 0 && self.count <= 0 && next) {
-        self.next = noop$1;
+        self.next = noop;
         next(null, self.results);
       }
     }
@@ -11319,194 +11319,201 @@ var srcExports = src.exports;
  * Copyright(c) 2015-2022 Douglas Christopher Wilson
  * MIT Licensed
  */
+var destroy_1;
+var hasRequiredDestroy;
+function requireDestroy() {
+  if (hasRequiredDestroy) return destroy_1;
+  hasRequiredDestroy = 1;
 
-/**
- * Module dependencies.
- * @private
- */
+  /**
+   * Module dependencies.
+   * @private
+   */
 
-var EventEmitter = require$$1$1.EventEmitter;
-var ReadStream = require$$1$2.ReadStream;
-var Stream$1 = require$$1$6;
-var Zlib = require$$3$3;
+  var EventEmitter = require$$1$1.EventEmitter;
+  var ReadStream = require$$1$2.ReadStream;
+  var Stream = require$$1$6;
+  var Zlib = require$$3$3;
 
-/**
- * Module exports.
- * @public
- */
+  /**
+   * Module exports.
+   * @public
+   */
 
-var destroy_1 = destroy$1;
+  destroy_1 = destroy;
 
-/**
- * Destroy the given stream, and optionally suppress any future `error` events.
- *
- * @param {object} stream
- * @param {boolean} suppress
- * @public
- */
+  /**
+   * Destroy the given stream, and optionally suppress any future `error` events.
+   *
+   * @param {object} stream
+   * @param {boolean} suppress
+   * @public
+   */
 
-function destroy$1(stream, suppress) {
-  if (isFsReadStream(stream)) {
-    destroyReadStream(stream);
-  } else if (isZlibStream(stream)) {
-    destroyZlibStream(stream);
-  } else if (hasDestroy(stream)) {
-    stream.destroy();
-  }
-  if (isEventEmitter(stream) && suppress) {
-    stream.removeAllListeners('error');
-    stream.addListener('error', noop);
-  }
-  return stream;
-}
-
-/**
- * Destroy a ReadStream.
- *
- * @param {object} stream
- * @private
- */
-
-function destroyReadStream(stream) {
-  stream.destroy();
-  if (typeof stream.close === 'function') {
-    // node.js core bug work-around
-    stream.on('open', onOpenClose);
-  }
-}
-
-/**
- * Close a Zlib stream.
- *
- * Zlib streams below Node.js 4.5.5 have a buggy implementation
- * of .close() when zlib encountered an error.
- *
- * @param {object} stream
- * @private
- */
-
-function closeZlibStream(stream) {
-  if (stream._hadError === true) {
-    var prop = stream._binding === null ? '_binding' : '_handle';
-    stream[prop] = {
-      close: function close() {
-        this[prop] = null;
-      }
-    };
-  }
-  stream.close();
-}
-
-/**
- * Destroy a Zlib stream.
- *
- * Zlib streams don't have a destroy function in Node.js 6. On top of that
- * simply calling destroy on a zlib stream in Node.js 8+ will result in a
- * memory leak. So until that is fixed, we need to call both close AND destroy.
- *
- * PR to fix memory leak: https://github.com/nodejs/node/pull/23734
- *
- * In Node.js 6+8, it's important that destroy is called before close as the
- * stream would otherwise emit the error 'zlib binding closed'.
- *
- * @param {object} stream
- * @private
- */
-
-function destroyZlibStream(stream) {
-  if (typeof stream.destroy === 'function') {
-    // node.js core bug work-around
-    // istanbul ignore if: node.js 0.8
-    if (stream._binding) {
-      // node.js < 0.10.0
-      stream.destroy();
-      if (stream._processing) {
-        stream._needDrain = true;
-        stream.once('drain', onDrainClearBinding);
-      } else {
-        stream._binding.clear();
-      }
-    } else if (stream._destroy && stream._destroy !== Stream$1.Transform.prototype._destroy) {
-      // node.js >= 12, ^11.1.0, ^10.15.1
-      stream.destroy();
-    } else if (stream._destroy && typeof stream.close === 'function') {
-      // node.js 7, 8
-      stream.destroyed = true;
-      stream.close();
-    } else {
-      // fallback
-      // istanbul ignore next
+  function destroy(stream, suppress) {
+    if (isFsReadStream(stream)) {
+      destroyReadStream(stream);
+    } else if (isZlibStream(stream)) {
+      destroyZlibStream(stream);
+    } else if (hasDestroy(stream)) {
       stream.destroy();
     }
-  } else if (typeof stream.close === 'function') {
-    // node.js < 8 fallback
-    closeZlibStream(stream);
+    if (isEventEmitter(stream) && suppress) {
+      stream.removeAllListeners('error');
+      stream.addListener('error', noop);
+    }
+    return stream;
   }
-}
 
-/**
- * Determine if stream has destroy.
- * @private
- */
+  /**
+   * Destroy a ReadStream.
+   *
+   * @param {object} stream
+   * @private
+   */
 
-function hasDestroy(stream) {
-  return stream instanceof Stream$1 && typeof stream.destroy === 'function';
-}
-
-/**
- * Determine if val is EventEmitter.
- * @private
- */
-
-function isEventEmitter(val) {
-  return val instanceof EventEmitter;
-}
-
-/**
- * Determine if stream is fs.ReadStream stream.
- * @private
- */
-
-function isFsReadStream(stream) {
-  return stream instanceof ReadStream;
-}
-
-/**
- * Determine if stream is Zlib stream.
- * @private
- */
-
-function isZlibStream(stream) {
-  return stream instanceof Zlib.Gzip || stream instanceof Zlib.Gunzip || stream instanceof Zlib.Deflate || stream instanceof Zlib.DeflateRaw || stream instanceof Zlib.Inflate || stream instanceof Zlib.InflateRaw || stream instanceof Zlib.Unzip;
-}
-
-/**
- * No-op function.
- * @private
- */
-
-function noop() {}
-
-/**
- * On drain handler to clear binding.
- * @private
- */
-
-// istanbul ignore next: node.js 0.8
-function onDrainClearBinding() {
-  this._binding.clear();
-}
-
-/**
- * On open handler to close stream.
- * @private
- */
-
-function onOpenClose() {
-  if (typeof this.fd === 'number') {
-    // actually close down the fd
-    this.close();
+  function destroyReadStream(stream) {
+    stream.destroy();
+    if (typeof stream.close === 'function') {
+      // node.js core bug work-around
+      stream.on('open', onOpenClose);
+    }
   }
+
+  /**
+   * Close a Zlib stream.
+   *
+   * Zlib streams below Node.js 4.5.5 have a buggy implementation
+   * of .close() when zlib encountered an error.
+   *
+   * @param {object} stream
+   * @private
+   */
+
+  function closeZlibStream(stream) {
+    if (stream._hadError === true) {
+      var prop = stream._binding === null ? '_binding' : '_handle';
+      stream[prop] = {
+        close: function close() {
+          this[prop] = null;
+        }
+      };
+    }
+    stream.close();
+  }
+
+  /**
+   * Destroy a Zlib stream.
+   *
+   * Zlib streams don't have a destroy function in Node.js 6. On top of that
+   * simply calling destroy on a zlib stream in Node.js 8+ will result in a
+   * memory leak. So until that is fixed, we need to call both close AND destroy.
+   *
+   * PR to fix memory leak: https://github.com/nodejs/node/pull/23734
+   *
+   * In Node.js 6+8, it's important that destroy is called before close as the
+   * stream would otherwise emit the error 'zlib binding closed'.
+   *
+   * @param {object} stream
+   * @private
+   */
+
+  function destroyZlibStream(stream) {
+    if (typeof stream.destroy === 'function') {
+      // node.js core bug work-around
+      // istanbul ignore if: node.js 0.8
+      if (stream._binding) {
+        // node.js < 0.10.0
+        stream.destroy();
+        if (stream._processing) {
+          stream._needDrain = true;
+          stream.once('drain', onDrainClearBinding);
+        } else {
+          stream._binding.clear();
+        }
+      } else if (stream._destroy && stream._destroy !== Stream.Transform.prototype._destroy) {
+        // node.js >= 12, ^11.1.0, ^10.15.1
+        stream.destroy();
+      } else if (stream._destroy && typeof stream.close === 'function') {
+        // node.js 7, 8
+        stream.destroyed = true;
+        stream.close();
+      } else {
+        // fallback
+        // istanbul ignore next
+        stream.destroy();
+      }
+    } else if (typeof stream.close === 'function') {
+      // node.js < 8 fallback
+      closeZlibStream(stream);
+    }
+  }
+
+  /**
+   * Determine if stream has destroy.
+   * @private
+   */
+
+  function hasDestroy(stream) {
+    return stream instanceof Stream && typeof stream.destroy === 'function';
+  }
+
+  /**
+   * Determine if val is EventEmitter.
+   * @private
+   */
+
+  function isEventEmitter(val) {
+    return val instanceof EventEmitter;
+  }
+
+  /**
+   * Determine if stream is fs.ReadStream stream.
+   * @private
+   */
+
+  function isFsReadStream(stream) {
+    return stream instanceof ReadStream;
+  }
+
+  /**
+   * Determine if stream is Zlib stream.
+   * @private
+   */
+
+  function isZlibStream(stream) {
+    return stream instanceof Zlib.Gzip || stream instanceof Zlib.Gunzip || stream instanceof Zlib.Deflate || stream instanceof Zlib.DeflateRaw || stream instanceof Zlib.Inflate || stream instanceof Zlib.InflateRaw || stream instanceof Zlib.Unzip;
+  }
+
+  /**
+   * No-op function.
+   * @private
+   */
+
+  function noop() {}
+
+  /**
+   * On drain handler to clear binding.
+   * @private
+   */
+
+  // istanbul ignore next: node.js 0.8
+  function onDrainClearBinding() {
+    this._binding.clear();
+  }
+
+  /**
+   * On open handler to close stream.
+   * @private
+   */
+
+  function onOpenClose() {
+    if (typeof this.fd === 'number') {
+      // actually close down the fd
+      this.close();
+    }
+  }
+  return destroy_1;
 }
 
 var lib$1 = {exports: {}};
@@ -23012,7 +23019,7 @@ function requireRead() {
    */
 
   var createError = httpErrorsExports;
-  var destroy = destroy_1;
+  var destroy = requireDestroy();
   var getBody = requireRawBody();
   var iconv = requireLib$1();
   var onFinished = onFinishedExports;
@@ -43658,7 +43665,7 @@ function sortByRangeStart(a, b) {
 var createError$1 = httpErrorsExports;
 var debug = srcExports('send');
 var deprecate$2 = depd_1('send');
-var destroy = destroy_1;
+var destroy = requireDestroy();
 var encodeUrl$1 = encodeurl;
 var escapeHtml$1 = escapeHtml_1;
 var etag = etag_1;
@@ -50399,7 +50406,7 @@ var apps = {
     launch: function launch(launchData) {
       var tbPackageId = tizen.application.getAppInfo().packageId;
       tizen.application.launchAppControl(new tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", null, null, null, [new tizen.ApplicationControlData("module", [JSON.stringify({
-        moduleName: 'atifrana/tz@r6',
+        moduleName: 'atifrana/tz@r7',
         moduleType: 'gh',
         args: launchData
       })])]), "".concat(tbPackageId, ".").concat(commonjsGlobal.isTizenTube ? 'TizenTubeStandalone' : 'TizenBrewStandalone'));
